@@ -1,0 +1,11 @@
+cat > .gitignore <<'EOF'
+venv/
+.venv/
+anaconda_projects/
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store
+EOFnotebooks/*.pkl
+
+notebooks/flood_preprocessor.pkl
+notebooks/xgboost_flood_model.pkl
