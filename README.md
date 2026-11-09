@@ -1,0 +1,1 @@
+README: add the run instructions so your teammates can start it too. The short version is: backend → cd backend, activate the venv, pip install -r requirements.txt, uvicorn app.main:app --reload. Frontend → cd floodguard-frontend, npm install, create .env with VITE_API_URL=http://127.0.0.1:8000, npm run dev.
