@@ -221,37 +221,182 @@ function Dashboard({ selected, setSelected, onAnalyze }) {
   );
 }
 
-function PredictionPage({ selected, setSelected }) {
-  const [rain, setRain] = useState("50");
-  const [water, setWater] = useState("3.0");
-  const [humidity, setHumidity] = useState("70");
-  const [result, setResult] = useState(null);
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-  function calculateDemo() {
-    const r = Math.max(0, Math.min(100, Number(rain) * 0.7 + Number(water) * 8 + Number(humidity) * 0.1));
-    setResult(Math.round(r));
+const locationCoords = {
+  Bengaluru: { latitude: "12.9716", longitude: "77.5946" },
+  Chennai: { latitude: "13.0827", longitude: "80.2707" },
+  Kochi: { latitude: "9.9312", longitude: "76.2673" },
+  Hyderabad: { latitude: "17.3850", longitude: "78.4867" },
+};
+
+const NUMERIC_FIELDS = [
+  "latitude", "longitude", "elevation_m", "drainage_density_km_per_km2",
+  "storm_drain_proximity_m", "historical_rainfall_intensity_mm_hr", "return_period_years",
+];
+
+function PredictionPage({ selected, setSelected }) {
+  const [form, setForm] = useState({
+    latitude: "12.9716",
+    longitude: "77.5946",
+    elevation_m: "10",
+    land_use: "Residential",
+    soil_group: "D",
+    drainage_density_km_per_km2: "4.5",
+    storm_drain_proximity_m: "150",
+    storm_drain_type: "CurbInlet",
+    historical_rainfall_intensity_mm_hr: "80",
+    return_period_years: "50",
+  });
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  function update(field, value) {
+    setForm(f => ({ ...f, [field]: value }));
   }
 
-  const risk = result === null ? null : result >= 75 ? "Very High" : result >= 55 ? "High" : result >= 30 ? "Moderate" : "Low";
+  function chooseLocation(name) {
+    setSelected(name);
+    const c = locationCoords[name];
+    if (c) setForm(f => ({ ...f, ...c }));
+  }
+
+  async function analyze() {
+    setLoading(true);
+    setError("");
+    setResult(null);
+
+    const payload = {};
+    for (const [key, value] of Object.entries(form)) {
+      if (value === "") payload[key] = null;
+      else payload[key] = NUMERIC_FIELDS.includes(key) ? Number(value) : value;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          Array.isArray(data.detail)
+            ? "Please fill latitude, longitude, rainfall intensity and return period."
+            : data.detail || "Request failed"
+        );
+      }
+      setResult(data);
+    } catch (e) {
+      setError(
+        e.message === "Failed to fetch"
+          ? "Cannot reach the backend. Is the server running on port 8000?"
+          : e.message
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <section className="page-section">
-      <div className="welcome-row"><div><div className="eyebrow">PREDICTION WORKSPACE</div><h1>Explore a risk scenario</h1><p className="subtitle">Enter illustrative values to preview the prediction interface.</p></div></div>
-      <div className="prototype-notice"><Info size={17}/><span>This form uses a demonstration calculation, not the trained ML model. Do not use its output for real-world decisions.</span></div>
+      <div className="welcome-row">
+        <div>
+          <div className="eyebrow">PREDICTION WORKSPACE</div>
+          <h1>Explore a risk scenario</h1>
+          <p className="subtitle">Enter site conditions and get a prediction from the trained XGBoost model.</p>
+        </div>
+      </div>
+      <div className="prototype-notice">
+        <Info size={17} />
+        <span>Results come from the project's trained model. This is an academic prototype, not an official warning service.</span>
+      </div>
       <div className="prediction-grid">
         <article className="panel form-panel">
-          <h2>Environmental inputs</h2><p className="form-subtitle">Choose a location and enter sample conditions.</p>
-          <label>Location<select value={selected} onChange={e => setSelected(e.target.value)}>{locations.map(l=><option key={l.name} value={l.name}>{l.name}, {l.region}</option>)}</select></label>
-          <label>Rainfall (mm)<input type="number" min="0" value={rain} onChange={e=>setRain(e.target.value)}/></label>
-          <label>Water level (m)<input type="number" min="0" step="0.1" value={water} onChange={e=>setWater(e.target.value)}/></label>
-          <label>Humidity (%)<input type="number" min="0" max="100" value={humidity} onChange={e=>setHumidity(e.target.value)}/></label>
-          <button className="primary-btn full-btn" onClick={calculateDemo}><Activity size={17}/> Generate demo assessment</button>
+          <h2>Site inputs</h2>
+          <p className="form-subtitle">Pick a location to fill coordinates, then adjust the values.</p>
+
+          <label>Location preset
+            <select value={selected} onChange={e => chooseLocation(e.target.value)}>
+              {locations.map(l => <option key={l.name} value={l.name}>{l.name}, {l.region}</option>)}
+            </select>
+          </label>
+          <label>Latitude
+            <input type="number" step="any" value={form.latitude} onChange={e => update("latitude", e.target.value)} />
+          </label>
+          <label>Longitude
+            <input type="number" step="any" value={form.longitude} onChange={e => update("longitude", e.target.value)} />
+          </label>
+          <label>Elevation (m)
+            <input type="number" step="any" value={form.elevation_m} onChange={e => update("elevation_m", e.target.value)} />
+          </label>
+          <label>Land use
+            <select value={form.land_use} onChange={e => update("land_use", e.target.value)}>
+              <option value="">Unknown</option>
+              {["Institutional", "Residential", "Industrial", "Roads", "Commercial", "Green", "Water", "Mixed", "Informal"]
+                .map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </label>
+          <label>Soil group
+            <select value={form.soil_group} onChange={e => update("soil_group", e.target.value)}>
+              <option value="">Unknown</option>
+              {["A", "B", "C", "D"].map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </label>
+          <label>Drainage density (km/km²)
+            <input type="number" step="any" min="0" value={form.drainage_density_km_per_km2} onChange={e => update("drainage_density_km_per_km2", e.target.value)} />
+          </label>
+          <label>Storm drain distance (m)
+            <input type="number" step="any" min="0" value={form.storm_drain_proximity_m} onChange={e => update("storm_drain_proximity_m", e.target.value)} />
+          </label>
+          <label>Storm drain type
+            <select value={form.storm_drain_type} onChange={e => update("storm_drain_type", e.target.value)}>
+              <option value="">Unknown</option>
+              {["CurbInlet", "OpenChannel", "Manhole", "GratedInlet"].map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </label>
+          <label>Rainfall intensity (mm/hr)
+            <input type="number" step="any" min="0" value={form.historical_rainfall_intensity_mm_hr} onChange={e => update("historical_rainfall_intensity_mm_hr", e.target.value)} />
+          </label>
+          <label>Return period (years)
+            <input type="number" step="any" min="1" value={form.return_period_years} onChange={e => update("return_period_years", e.target.value)} />
+          </label>
+
+          <button className="primary-btn full-btn" onClick={analyze} disabled={loading}>
+            <Activity size={17} /> {loading ? "Analyzing..." : "Predict flood risk"}
+          </button>
         </article>
+
         <article className="panel result-panel">
-          <div className="panel-heading"><div><h2>Assessment result</h2><p>Demonstration output</p></div><span className="ai-icon"><Zap size={16}/></span></div>
-          {result === null ? <div className="empty-result"><span className="empty-icon"><CloudRain size={30}/></span><h3>Ready to explore?</h3><p>Enter sample conditions and generate an illustrative assessment.</p></div> :
-            <div className="demo-result"><span className="result-caption">DEMO RISK INDEX</span><div className="result-number">{result}<small>/100</small></div><RiskBadge risk={risk}/><p>This is a rule-based demo score. It is not a calibrated flood probability or a model prediction.</p><div className="result-meter"><div style={{width:`${result}%`}}/></div></div>}
-          <div className="result-note"><Info size={15}/> Replace this demo logic with the team's validated model API before reporting real model results.</div>
+          <div className="panel-heading">
+            <div><h2>Assessment result</h2><p>Model output</p></div>
+            <span className="ai-icon"><Zap size={16} /></span>
+          </div>
+
+          {error && <div className="result-note"><Info size={15} /> {error}</div>}
+
+          {!result && !error && (
+            <div className="empty-result">
+              <span className="empty-icon"><CloudRain size={30} /></span>
+              <h3>Ready to explore?</h3>
+              <p>Fill in the site inputs and run the prediction.</p>
+            </div>
+          )}
+
+          {result && (
+            <div className="demo-result">
+              <span className="result-caption">PREDICTED RISK LEVEL</span>
+              <div className="result-number">{Math.round(result.confidence * 100)}<small>% confidence</small></div>
+              <RiskBadge risk={result.risk_level} />
+              <div className="result-meter"><div style={{ width: `${Math.round(result.confidence * 100)}%` }} /></div>
+              <p>
+                {Object.entries(result.probabilities).map(([name, p]) => (
+                  <span key={name} style={{ display: "block" }}>{name}: {(p * 100).toFixed(1)}%</span>
+                ))}
+              </p>
+            </div>
+          )}
         </article>
       </div>
     </section>
