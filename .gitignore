@@ -13,3 +13,5 @@ backend/clariflood.db
 backend/output.txt
 backend/explore_data.py
 floodguard-frontend/.env
+.pytest_cache/
+__pycache__/
