@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer
+  Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine
 } from "recharts";
 import "./App.css";
 
@@ -235,6 +235,66 @@ const NUMERIC_FIELDS = [
   "storm_drain_proximity_m", "historical_rainfall_intensity_mm_hr", "return_period_years",
 ];
 
+
+function WaterfallChart({ baseValue, score, factors }) {
+  const top = factors.slice(0, 5);
+  const restSum = factors.slice(5).reduce((s, f) => s + f.contribution, 0);
+  const steps = [
+    ...top.map(f => ({ name: f.label, delta: f.contribution })),
+    { name: "Other inputs", delta: restSum },
+  ];
+
+  const data = [{
+    name: "Starting value",
+    range: [Math.min(0, baseValue), Math.max(0, baseValue)],
+    kind: "total",
+    display: baseValue,
+  }];
+  let running = baseValue;
+  for (const s of steps) {
+    const start = running;
+    const end = running + s.delta;
+    data.push({
+      name: s.name,
+      range: [Math.min(start, end), Math.max(start, end)],
+      kind: s.delta >= 0 ? "up" : "down",
+      display: s.delta,
+    });
+    running = end;
+  }
+  data.push({
+    name: "Final score",
+    range: [Math.min(0, score), Math.max(0, score)],
+    kind: "total",
+    display: score,
+  });
+
+  const colors = { total: "#64748b", up: "#2563eb", down: "#f59e0b" };
+
+  return (
+    <div style={{ marginTop: 18 }}>
+      <h3>Step-by-step (waterfall)</h3>
+      <div style={{ width: "100%", height: 320 }}>
+        <ResponsiveContainer>
+          <BarChart data={data} layout="vertical" margin={{ left: 10, right: 20 }}>
+            <XAxis type="number" />
+            <YAxis type="category" dataKey="name" width={130} />
+            <ReferenceLine x={0} stroke="#94a3b8" />
+            <Tooltip formatter={(v, n, p) => [p.payload.display.toFixed(3), "Contribution"]} />
+            <Bar dataKey="range">
+              {data.map((d, i) => <Cell key={i} fill={colors[d.kind]} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="explain-foot">
+        <Info size={15} /> Starts at the model's base score, then each input pushes it up (blue) or down (amber) until the final score for the predicted level.
+      </div>
+    </div>
+  );
+}
+
+
 function PredictionPage({ selected, setSelected }) {
   const [form, setForm] = useState({
     latitude: "12.9716",
@@ -253,6 +313,8 @@ function PredictionPage({ selected, setSelected }) {
   const [error, setError] = useState("");
   const [factors, setFactors] = useState([]);
   const [summary, setSummary] = useState("");
+  const [baseValue, setBaseValue] = useState(null);
+  const [score, setScore] = useState(null);
 
   function update(field, value) {
     setForm(f => ({ ...f, [field]: value }));
@@ -270,6 +332,8 @@ function PredictionPage({ selected, setSelected }) {
     setResult(null);
     setFactors([]);
     setSummary("");
+    setBaseValue(null);
+    setScore(null);
 
     const payload = {};
     for (const [key, value] of Object.entries(form)) {
@@ -302,6 +366,8 @@ function PredictionPage({ selected, setSelected }) {
         const explData = await explRes.json();
         setFactors(explData.factors);
         setSummary(explData.summary || "");
+        setBaseValue(explData.base_value);
+        setScore(explData.score);
       }
     } catch (e) {
       setError(
@@ -433,6 +499,9 @@ function PredictionPage({ selected, setSelected }) {
               <div className="explain-foot">
                 <Info size={15} /> Share of the model's decision from each input (SHAP). "supports" means the input pushed toward the predicted level.
               </div>
+              {baseValue !== null && score !== null && (
+                <WaterfallChart baseValue={baseValue} score={score} factors={factors} />
+              )}
             </div>
           )}
         </article>

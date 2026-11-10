@@ -87,6 +87,7 @@ def explain(data: dict):
         model.get_booster().predict(xgb.DMatrix(X), pred_contribs=True, validate_features=False)
     )
     row = contribs[0, best, :-1] if contribs.ndim == 3 else contribs[0, :-1]
+    bias = float(contribs[0, best, -1] if contribs.ndim == 3 else contribs[0, -1])
 
     names = list(preprocessor.get_feature_names_out())
     if len(names) != len(row):
@@ -126,5 +127,7 @@ def explain(data: dict):
         "risk_level": CLASS_NAMES[best],
         "confidence": round(float(probs[best]), 4),
         "summary": _summary(CLASS_NAMES[best], factors),
+        "base_value": round(bias, 4),
+        "score": round(bias + sum(totals.values()), 4),
         "factors": factors,
     }
