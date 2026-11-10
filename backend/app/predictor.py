@@ -54,6 +54,29 @@ def predict(data: dict):
     }
 
 
+def _summary(risk_level: str, factors: list) -> str:
+    """Short plain-English sentence about the main factors."""
+    supporting = [f for f in factors if f["effect"] == "supports" and f["share"] >= 1][:3]
+    opposing = [f for f in factors[:4] if f["effect"] == "opposes"][:1]
+
+    if not supporting:
+        return f"{risk_level} risk. No single factor dominates this prediction."
+
+    parts = [f'{f["label"].lower()} ({f["share"]:.0f}%)' for f in supporting]
+    if len(parts) == 1:
+        joined = parts[0]
+    elif len(parts) == 2:
+        joined = " and ".join(parts)
+    else:
+        joined = ", ".join(parts[:-1]) + " and " + parts[-1]
+
+    text = f"{risk_level} risk, mainly driven by {joined}."
+    if opposing:
+        o = opposing[0]
+        text += f' {o["label"]} works against this result ({o["share"]:.0f}%).'
+    return text
+
+
 def explain(data: dict):
     df, X = _prepare(data)
     probs = model.predict_proba(X)[0]
@@ -102,5 +125,6 @@ def explain(data: dict):
     return {
         "risk_level": CLASS_NAMES[best],
         "confidence": round(float(probs[best]), 4),
+        "summary": _summary(CLASS_NAMES[best], factors),
         "factors": factors,
     }

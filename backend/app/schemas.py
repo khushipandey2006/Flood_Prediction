@@ -49,4 +49,5 @@ class Factor(BaseModel):
 class ExplainOutput(BaseModel):
     risk_level: str
     confidence: float
+    summary: str
     factors: list[Factor]

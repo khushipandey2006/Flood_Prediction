@@ -252,6 +252,7 @@ function PredictionPage({ selected, setSelected }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [factors, setFactors] = useState([]);
+  const [summary, setSummary] = useState("");
 
   function update(field, value) {
     setForm(f => ({ ...f, [field]: value }));
@@ -268,6 +269,7 @@ function PredictionPage({ selected, setSelected }) {
     setError("");
     setResult(null);
     setFactors([]);
+    setSummary("");
 
     const payload = {};
     for (const [key, value] of Object.entries(form)) {
@@ -299,6 +301,7 @@ function PredictionPage({ selected, setSelected }) {
       if (explRes.ok) {
         const explData = await explRes.json();
         setFactors(explData.factors);
+        setSummary(explData.summary || "");
       }
     } catch (e) {
       setError(
@@ -412,6 +415,7 @@ function PredictionPage({ selected, setSelected }) {
           {factors.length > 0 && (
             <div style={{ marginTop: 18 }}>
               <h3>Why this prediction?</h3>
+              {summary && <p style={{ margin: "6px 0 14px", fontWeight: 500 }}>{summary}</p>}
               {factors.slice(0, 5).map(f => (
                 <div className="factor" key={f.feature}>
                   <div className="factor-label">
