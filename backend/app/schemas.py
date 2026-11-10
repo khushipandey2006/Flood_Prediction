@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel, Field
 
@@ -20,3 +21,32 @@ class FloodOutput(BaseModel):
     risk_level: str
     confidence: float
     probabilities: dict[str, float]
+
+
+
+class HistoryItem(BaseModel):
+    id: int
+    created_at: datetime
+    inputs: dict
+    risk_level: str
+    confidence: float
+    probabilities: dict[str, float]
+
+    model_config = {"from_attributes": True}
+
+
+
+
+class Factor(BaseModel):
+    feature: str
+    label: str
+    value: float | str | None
+    contribution: float
+    share: float
+    effect: str
+
+
+class ExplainOutput(BaseModel):
+    risk_level: str
+    confidence: float
+    factors: list[Factor]
