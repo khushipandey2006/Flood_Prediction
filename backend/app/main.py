@@ -6,6 +6,7 @@ from .database import Base, engine, get_db
 from .models import Prediction
 from .schemas import FloodInput, FloodOutput, HistoryItem, ExplainOutput
 from .predictor import predict, explain
+from .config import CORS_ORIGINS
 
 Base.metadata.create_all(bind=engine)
 
@@ -13,7 +14,7 @@ app = FastAPI(title="ClariFlood API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -15,3 +15,4 @@ backend/explore_data.py
 floodguard-frontend/.env
 .pytest_cache/
 __pycache__/
+backend/.env
