@@ -9,3 +9,7 @@ EOFnotebooks/*.pkl
 
 notebooks/flood_preprocessor.pkl
 notebooks/xgboost_flood_model.pkl
+backend/clariflood.db
+backend/output.txt
+backend/explore_data.py
+floodguard-frontend/.env
