@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Activity, AlertTriangle, Bell, ChevronDown, CloudRain,
   Droplets, LayoutDashboard, MapPin, Menu, Search,
@@ -184,8 +184,8 @@ function Dashboard({ selected, setSelected, onAnalyze }) {
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={trendData} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="rainFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1685e5" stopOpacity={0.2}/><stop offset="100%" stopColor="#1685e5" stopOpacity={0}/></linearGradient>
-                  <linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#16b8a6" stopOpacity={0.15}/><stop offset="100%" stopColor="#16b8a6" stopOpacity={0}/></linearGradient>
+                  <linearGradient id="rainFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1685e5" stopOpacity={0.2} /><stop offset="100%" stopColor="#1685e5" stopOpacity={0} /></linearGradient>
+                  <linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#16b8a6" stopOpacity={0.15} /><stop offset="100%" stopColor="#16b8a6" stopOpacity={0} /></linearGradient>
                 </defs>
                 <CartesianGrid stroke="#eaf0f6" strokeDasharray="4 5" vertical={false} />
                 <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fill: "#8190a5", fontSize: 11 }} />
@@ -208,15 +208,15 @@ function Dashboard({ selected, setSelected, onAnalyze }) {
               <button className={`location-item ${l.name === selected ? "selected" : ""}`} key={l.name} onClick={() => setSelected(l.name)}>
                 <span className={`location-avatar ${l.risk.toLowerCase().replace(" ", "-")}`}><MapPin size={16} /></span>
                 <span className="location-details"><strong>{l.name}</strong><small>{l.region}</small></span>
-                <span className="location-risk"><RiskBadge risk={l.risk}/><small>{l.probability}% sample</small></span>
+                <span className="location-risk"><RiskBadge risk={l.risk} /><small>{l.probability}% sample</small></span>
               </button>
             ))}
           </div>
-          <p className="list-foot"><Info size={13}/> Not live or official risk information.</p>
+          <p className="list-foot"><Info size={13} /> Not live or official risk information.</p>
         </article>
       </section>
 
-      <footer className="footer"><span>🌊 ClariFlood <span className="footer-muted">· Explainable flood-risk research prototype</span></span><span><Clock3 size={14}/> Demo data · Not an official warning service</span></footer>
+      <footer className="footer"><span>🌊 ClariFlood <span className="footer-muted">· Explainable flood-risk research prototype</span></span><span><Clock3 size={14} /> Demo data · Not an official warning service</span></footer>
     </>
   );
 }
@@ -251,6 +251,7 @@ function PredictionPage({ selected, setSelected }) {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [factors, setFactors] = useState([]);
 
   function update(field, value) {
     setForm(f => ({ ...f, [field]: value }));
@@ -266,6 +267,7 @@ function PredictionPage({ selected, setSelected }) {
     setLoading(true);
     setError("");
     setResult(null);
+    setFactors([]);
 
     const payload = {};
     for (const [key, value] of Object.entries(form)) {
@@ -274,20 +276,30 @@ function PredictionPage({ selected, setSelected }) {
     }
 
     try {
-      const res = await fetch(`${API_URL}/predict`, {
+      const options = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) {
+      };
+      const [predRes, explRes] = await Promise.all([
+        fetch(`${API_URL}/predict`, options),
+        fetch(`${API_URL}/explain`, options),
+      ]);
+
+      const predData = await predRes.json();
+      if (!predRes.ok) {
         throw new Error(
-          Array.isArray(data.detail)
+          Array.isArray(predData.detail)
             ? "Please fill latitude, longitude, rainfall intensity and return period."
-            : data.detail || "Request failed"
+            : predData.detail || "Request failed"
         );
       }
-      setResult(data);
+      setResult(predData);
+
+      if (explRes.ok) {
+        const explData = await explRes.json();
+        setFactors(explData.factors);
+      }
     } catch (e) {
       setError(
         e.message === "Failed to fetch"
@@ -397,22 +409,118 @@ function PredictionPage({ selected, setSelected }) {
               </p>
             </div>
           )}
+          {factors.length > 0 && (
+            <div style={{ marginTop: 18 }}>
+              <h3>Why this prediction?</h3>
+              {factors.slice(0, 5).map(f => (
+                <div className="factor" key={f.feature}>
+                  <div className="factor-label">
+                    <span>{f.label}{f.value !== null ? ` (${f.value})` : ""}</span>
+                    <small>{f.share}% · {f.effect}</small>
+                  </div>
+                  <div className="factor-track">
+                    <div
+                      className={`factor-fill ${f.effect === "supports" ? "bar-blue" : "bar-amber"}`}
+                      style={{ width: `${Math.min(100, f.share)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+              <div className="explain-foot">
+                <Info size={15} /> Share of the model's decision from each input (SHAP). "supports" means the input pushed toward the predicted level.
+              </div>
+            </div>
+          )}
         </article>
       </div>
     </section>
   );
 }
 
+function formatTime(iso) {
+  const t = iso.endsWith("Z") ? iso : iso + "Z";
+  return new Date(t).toLocaleString();
+}
+
 function HistoryPage() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_URL}/history?limit=50`);
+      if (!res.ok) throw new Error("Could not load history");
+      setRows(await res.json());
+    } catch (e) {
+      setError(
+        e.message === "Failed to fetch"
+          ? "Cannot reach the backend. Is the server running on port 8000?"
+          : e.message
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function remove(id) {
+    try {
+      await fetch(`${API_URL}/history/${id}`, { method: "DELETE" });
+      setRows(r => r.filter(x => x.id !== id));
+    } catch {
+      setError("Could not delete that record.");
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
   return (
     <section className="page-section">
-      <div className="welcome-row"><div><div className="eyebrow">RECORDS & TRENDS</div><h1>Prediction history</h1><p className="subtitle">Explore the structure planned for saved assessments.</p></div></div>
-      <div className="prototype-notice"><Info size={17}/><span>Sample records only. Persistent history will become available after database integration.</span></div>
+      <div className="welcome-row">
+        <div>
+          <div className="eyebrow">RECORDS & TRENDS</div>
+          <h1>Prediction history</h1>
+          <p className="subtitle">Every prediction made through the app is saved here.</p>
+        </div>
+        <button className="outline-btn" onClick={load}>Refresh</button>
+      </div>
       <article className="panel table-panel">
-        <div className="panel-heading"><div><h2>Recent assessments</h2><p>Illustrative records for UI development</p></div><History size={18} className="heading-icon"/></div>
-        <div className="table-wrap"><table><thead><tr><th>Location</th><th>Probability</th><th>Risk</th><th>Rainfall</th><th>Status</th></tr></thead><tbody>
-          {locations.map(l=><tr key={l.name}><td><strong>{l.name}</strong><small>{l.region}</small></td><td>{l.probability}%</td><td><RiskBadge risk={l.risk}/></td><td>{l.rainfall} mm</td><td><span className="sample-status">Sample</span></td></tr>)}
-        </tbody></table></div>
+        <div className="panel-heading">
+          <div><h2>Recent assessments</h2><p>Saved by the backend database</p></div>
+          <History size={18} className="heading-icon" />
+        </div>
+        {error && <div className="result-note"><Info size={15} /> {error}</div>}
+        {loading && <p>Loading...</p>}
+        {!loading && !error && rows.length === 0 && (
+          <p>No predictions saved yet. Run one on the Predictions page.</p>
+        )}
+        {rows.length > 0 && (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th><th>Location</th><th>Rainfall</th><th>Elevation</th>
+                  <th>Risk</th><th>Confidence</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.id}>
+                    <td>{formatTime(r.created_at)}</td>
+                    <td>{Number(r.inputs.latitude).toFixed(2)}, {Number(r.inputs.longitude).toFixed(2)}</td>
+                    <td>{r.inputs.historical_rainfall_intensity_mm_hr} mm/hr</td>
+                    <td>{r.inputs.elevation_m ?? "n/a"} m</td>
+                    <td><RiskBadge risk={r.risk_level} /></td>
+                    <td>{Math.round(r.confidence * 100)}%</td>
+                    <td><button className="outline-btn" onClick={() => remove(r.id)}>Delete</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </article>
     </section>
   );
@@ -438,33 +546,33 @@ export default function App() {
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`}>
-        <div className="brand"><span className="brand-mark"><Waves size={23}/></span><span>Clari<span className="brand-accent">Flood</span><small>RISK INTELLIGENCE</small></span></div>
+        <div className="brand"><span className="brand-mark"><Waves size={23} /></span><span>Clari<span className="brand-accent">Flood</span><small>RISK INTELLIGENCE</small></span></div>
         <div className="nav-caption">WORKSPACE</div>
-        <nav>{navItems.map(({name, icon: Icon})=><button key={name} className={`nav-link ${page === name ? "active" : ""}`} onClick={()=>navigate(name)}><Icon size={18}/><span>{name}</span>{name==="History" && <span className="nav-soon">DEMO</span>}</button>)}</nav>
+        <nav>{navItems.map(({ name, icon: Icon }) => <button key={name} className={`nav-link ${page === name ? "active" : ""}`} onClick={() => navigate(name)}><Icon size={18} /><span>{name}</span>{name === "History" && <span className="nav-soon">DEMO</span>}</button>)}</nav>
         <div className="sidebar-bottom">
-          <div className="sidebar-card"><span className="sidebar-card-icon"><ShieldCheck size={19}/></span><strong>Built for awareness</strong><p>Explainable insights for flood-risk research.</p></div>
-          <button className="nav-link" onClick={()=>setNotice(!notice)}><Settings size={18}/><span>About this prototype</span></button>
+          <div className="sidebar-card"><span className="sidebar-card-icon"><ShieldCheck size={19} /></span><strong>Built for awareness</strong><p>Explainable insights for flood-risk research.</p></div>
+          <button className="nav-link" onClick={() => setNotice(!notice)}><Settings size={18} /><span>About this prototype</span></button>
           {notice && <p className="sidebar-note">ClariFlood is an academic prototype. Sample data is not suitable for emergency decisions.</p>}
           <div className="profile"><div className="profile-avatar">CF</div><div><strong>ClariFlood Team</strong><small>Mini project · Review 2</small></div></div>
         </div>
       </aside>
 
-      {mobileOpen && <button className="mobile-overlay" aria-label="Close menu" onClick={()=>setMobileOpen(false)}/>}
+      {mobileOpen && <button className="mobile-overlay" aria-label="Close menu" onClick={() => setMobileOpen(false)} />}
 
       <main className="main-content">
         <header className="topbar">
-          <button className="mobile-menu" aria-label="Open menu" onClick={()=>setMobileOpen(!mobileOpen)}><Menu size={21}/></button>
+          <button className="mobile-menu" aria-label="Open menu" onClick={() => setMobileOpen(!mobileOpen)}><Menu size={21} /></button>
           <div className="breadcrumbs"><span>Workspace</span><span className="crumb-sep">/</span><strong>{page}</strong></div>
           <div className="topbar-right">
-            <span className="demo-pill"><span/> DEMO MODE</span>
-            <button className="top-icon" title="Notifications" onClick={()=>setNotice(!notice)}><Bell size={18}/><i/></button>
-            <div className="top-date"><span>PROJECT ENVIRONMENT</span><strong><span className="green-dot"/> Prototype active</strong></div>
+            <span className="demo-pill"><span /> DEMO MODE</span>
+            <button className="top-icon" title="Notifications" onClick={() => setNotice(!notice)}><Bell size={18} /><i /></button>
+            <div className="top-date"><span>PROJECT ENVIRONMENT</span><strong><span className="green-dot" /> Prototype active</strong></div>
           </div>
         </header>
         <div className="content-wrap">
-          {page==="Dashboard" && <Dashboard selected={selected} setSelected={setSelected} onAnalyze={()=>navigate("Predictions")}/>}
-          {page==="Predictions" && <PredictionPage selected={selected} setSelected={setSelected}/>}
-          {page==="History" && <HistoryPage/>}
+          {page === "Dashboard" && <Dashboard selected={selected} setSelected={setSelected} onAnalyze={() => navigate("Predictions")} />}
+          {page === "Predictions" && <PredictionPage selected={selected} setSelected={setSelected} />}
+          {page === "History" && <HistoryPage />}
         </div>
       </main>
     </div>
