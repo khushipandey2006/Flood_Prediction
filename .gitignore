@@ -16,3 +16,4 @@ floodguard-frontend/.env
 .pytest_cache/
 __pycache__/
 backend/.env
+backend/find_examples.py
