@@ -82,7 +82,7 @@ Open http://localhost:5173. The backend allows requests from this address only (
 
 - **Predictions page:** fill in the site inputs and run the model. It shows the risk level, confidence, class probabilities, a plain-English summary, the top contributing inputs as bars, and a waterfall chart.
 - **History page:** lists the predictions saved by the backend, with delete and refresh.
-- **Dashboard page:** currently shows illustrative sample data and is labelled as such.
+- **Dashboard page:** shows illustrative sample data, except the overall feature importance chart, which uses real model output from `/feature-importance`.
 
 ## Running the tests
 
@@ -174,6 +174,13 @@ Each entry in `factors` has:
 | `share` | The input's percentage of the total absolute contribution |
 | `effect` | `supports` (pushed toward the predicted level), `opposes` (pushed away) or `neutral` |
    ### Response of `/feature-importance`
+
+| Field | Meaning |
+|-------|---------|
+| `risk_class` | Class the importance is calculated for: `High` (default), `Moderate` or `Low` |
+| `sample_size` | Number of dataset rows used (parameter `sample_size`, 50 to 5000, default 1000) |
+| `features` | The 10 inputs sorted by importance, each with `feature`, `label`, `importance` (mean absolute SHAP value) and `share` (percentage of the total) |
+### Response of `/feature-importance`
 
 | Field | Meaning |
 |-------|---------|
