@@ -11,6 +11,7 @@ import {
   Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine
 } from "recharts";
 import "./App.css";
+import FeatureImportanceChart from "./FeatureImportanceChart";
 
 const trendData = [
   { time: "06 AM", rainfall: 18, risk: 18 },
@@ -171,6 +172,9 @@ function Dashboard({ selected, setSelected, onAnalyze }) {
           ))}
           <div className="explain-foot"><Info size={15} /> These bars are illustrative, not actual SHAP values.</div>
         </article>
+      </section>
+      <section style={{ marginBottom: 18 }}>
+        <FeatureImportanceChart />
       </section>
 
       <section className="bottom-grid">
