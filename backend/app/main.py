@@ -1,4 +1,6 @@
-from fastapi import FastAPI, HTTPException, Depends
+from typing import Literal
+
+from fastapi import FastAPI, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -7,6 +9,7 @@ from .models import Prediction
 from .schemas import FloodInput, FloodOutput, HistoryItem, ExplainOutput
 from .predictor import predict, explain
 from .config import CORS_ORIGINS
+from .importance import ImportanceOutput, global_importance
 
 Base.metadata.create_all(bind=engine)
 
@@ -59,3 +62,14 @@ def delete_prediction(prediction_id: int, db: Session = Depends(get_db)):
     db.delete(row)
     db.commit()
     return {"deleted": prediction_id}
+
+
+
+@app.get("/feature-importance", response_model=ImportanceOutput)
+def feature_importance(
+    risk_class: Literal["High", "Moderate", "Low"] = "High",
+    sample_size: int = Query(1000, ge=50, le=5000),):
+    try:
+        return global_importance(risk_class, sample_size)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
